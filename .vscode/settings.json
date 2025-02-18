@@ -1,0 +1,15 @@
+{
+  "cSpell.words": [
+    "accesstoken",
+    "djttefoijyaolidi",
+    "jwtid",
+    "refreshtoken",
+    "Saraha",
+    "uuidv",
+    "ziad"
+  ],
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnType": true
+}
