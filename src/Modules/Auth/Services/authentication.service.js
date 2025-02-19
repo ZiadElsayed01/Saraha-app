@@ -109,114 +109,98 @@ export const logIn = async (req, res) => {
 };
 
 export const refreshToken = async (req, res) => {
-  try {
-    const { refreshtoken } = req.headers;
-    if (!refreshtoken) {
-      return res.status(400).json({ message: "Refresh token is required" });
-    }
-
-    const decoded = jwt.verify(refreshtoken, process.env.JWT_REFRESH_SECRETE);
-
-    const user = decoded.user;
-    if (!user) {
-      return res.status(401).json({ message: "Invalid refresh token" });
-    }
-
-    const accessToken = jwt.sign(user, process.env.JWT_LOGIN_SECRETE, {
-      expiresIn: "40s",
-    });
-
-    res.status(200).json({
-      message: "Token refreshed successfully",
-      accessToken,
-    });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Internal server error", error });
+  const { refreshtoken } = req.headers;
+  if (!refreshtoken) {
+    return res.status(400).json({ message: "Refresh token is required" });
   }
+
+  const decoded = jwt.verify(refreshtoken, process.env.JWT_REFRESH_SECRETE);
+
+  if (!decoded) {
+    return res.status(401).json({ message: "Invalid refresh token" });
+  }
+
+  const accessToken = jwt.sign(
+    { _id: decoded._id, email: decoded.email },
+    process.env.JWT_LOGIN_SECRETE,
+    {
+      expiresIn: "1h",
+      jwtid: uuidv4(),
+    }
+  );
+
+  res.status(200).json({
+    message: "Token refreshed successfully",
+    accessToken,
+  });
 };
 
 export const logout = async (req, res) => {
-  try {
-    const { accesstoken, refreshtoken } = req.headers;
-    const decodedData = jwt.verify(accesstoken, process.env.JWT_LOGIN_SECRETE);
+  const { accesstoken, refreshtoken } = req.headers;
+  const decodedData = jwt.verify(accesstoken, process.env.JWT_LOGIN_SECRETE);
 
-    const decodedRefreshData = jwt.verify(
-      refreshtoken,
-      process.env.JWT_REFRESH_SECRETE
-    );
+  const decodedRefreshData = jwt.verify(
+    refreshtoken,
+    process.env.JWT_REFRESH_SECRETE
+  );
 
-    await BlackListTokens.insertMany([
-      {
-        tokenId: decodedData.jti,
-        expiredDate: decodedData.exp,
-      },
-      {
-        tokenId: decodedRefreshData.jti,
-        expiredDate: decodedRefreshData.exp,
-      },
-    ]);
-    res.status(200).json({ message: "User logged out successfully" });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "internal server error", error });
-  }
+  await BlackListTokens.insertMany([
+    {
+      tokenId: decodedData.jti,
+      expiredDate: decodedData.exp,
+    },
+    {
+      tokenId: decodedRefreshData.jti,
+      expiredDate: decodedRefreshData.exp,
+    },
+  ]);
+  res.status(200).json({ message: "User logged out successfully" });
 };
 
 export const forgetPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(404).json({ message: "Email is required" });
+  const { email } = req.body;
+  if (!email) return res.status(404).json({ message: "Email is required" });
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "Email not registered" });
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ message: "Email not registered" });
 
-    const otp = uuidv4();
+  const otp = uuidv4();
 
-    emitter.emit("SendEmail", {
-      to: email,
-      subject: "Forget Password OTP",
-      html: `<h1>Hello in SarahaApp</h1><p>OTP: ${otp}</p>`,
-    });
+  emitter.emit("SendEmail", {
+    to: email,
+    subject: "Forget Password OTP",
+    html: `<h1>Hello in SarahaApp</h1><p>OTP: ${otp}</p>`,
+  });
 
-    const hashedOTP = hashSync(otp, +process.env.SALT);
-    user.otp = hashedOTP;
-    await user.save();
-    res.status(200).json({ message: "OTP sent successfully" });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Internal server error" });
-  }
+  const hashedOTP = hashSync(otp, +process.env.SALT);
+  user.otp = hashedOTP;
+  await user.save();
+  res.status(200).json({ message: "OTP sent successfully" });
 };
 
 export const resetPassword = async (req, res) => {
-  try {
-    const { email, OTP, newPassword, confirmPassword } = req.body;
+  const { email, OTP, newPassword, confirmPassword } = req.body;
 
-    if (!email || !OTP || !newPassword || !confirmPassword) {
-      return res.status(400).json({
-        message: "Email , OTP, Password and confirmPassword are required",
-      });
-    }
-
-    if (newPassword !== confirmPassword) {
-      return res.status(400).json({ message: "Passwords do not match" });
-    }
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "Email not registered" });
-
-    const isOTPMatched = compareSync(OTP, user.otp);
-    if (!isOTPMatched) return res.status(400).json({ message: "Invalid OTP" });
-
-    const hashedPassword = hashSync(newPassword, +process.env.SALT);
-
-    await User.updateOne(
-      { email },
-      { password: hashedPassword, $unset: { otp: "" } }
-    );
-    res.status(200).json({ message: "Password reset successfully" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal server error" });
+  if (!email || !OTP || !newPassword || !confirmPassword) {
+    return res.status(400).json({
+      message: "Email , OTP, Password and confirmPassword are required",
+    });
   }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ message: "Passwords do not match" });
+  }
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ message: "Email not registered" });
+
+  const isOTPMatched = compareSync(OTP, user.otp);
+  if (!isOTPMatched) return res.status(400).json({ message: "Invalid OTP" });
+
+  const hashedPassword = hashSync(newPassword, +process.env.SALT);
+
+  await User.updateOne(
+    { email },
+    { password: hashedPassword, $unset: { otp: "" } }
+  );
+  res.status(200).json({ message: "Password reset successfully" });
 };
